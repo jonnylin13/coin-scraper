@@ -18,7 +18,7 @@ const options = {
     sources: sources
 };
 
-async function send_email(price, pct) {
+async function send_email(urgent=false) {
     let transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
         port: process.env.SMTP_PORT,
@@ -29,11 +29,27 @@ async function send_email(price, pct) {
         }
     });
 
+    let html_body = '';
+
+    for (let coin of sources) {
+        html_body += `<h1>${coin.name}</h1>`;
+        if (coin.pct.includes('-')) {
+            html_body += `<h2>is at <span style="color:red;">$${coin.price}</span> | <span style="color:red;">${coin.pct}</span><br>`;
+        } else {
+            html_body += `<h2>is at <span style="color:green;">$${coin.price}</span> | <span style="color:green;">${coin.pct}</span><br>`;
+        }
+    }
+
+    html_body += '<p style="font-weight: bold;">Scraped from https://cryptowat.ch/</p>';
+    let subject = `Bitcoin is at $${sources[0].price} | ${sources[0].pct}`;
+    if (urgent) subject = 'URGENT | ' + subject;
+    
+
     let info = await transporter.sendMail({
         from: `"Cryptoknight 👨‍🦲" <${process.env.SMTP_USER}>`,
         to: process.env.TARGET_EMAIL,
-        subject: `Bitcoin is at ${price} | ${pct}`,
-        text: `Bitcoin is at ${price} | ${pct}!\nhttps://cryptowat.ch/`
+        subject: subject,
+        html: html_body
     });
 }
 
@@ -95,11 +111,12 @@ scrape(options).then(res => {
     save_records();
 
     if (should_email()) {
-        send_email(price, pct).then(res =>{}).catch(err => { console.error(err) });
+        send_email().then(res =>{}).catch(err => { console.error(err); rimraf(process.env.SCRAPE_PATH, (err) => {if(err) console.error(err)}) });
     }
 
-    rimraf(process.env.SCRAPE_PATH, (err) => {if (err) console.error});
+    rimraf(process.env.SCRAPE_PATH, (err) => {if (err) console.error(err)});
 
 }).catch(err => {
     console.error(err);
+    rimraf(process.env.SCRAPE_PATH, (err) => {if (err) console.error(err)});
 });
