@@ -6,12 +6,16 @@ const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 require('dotenv').config();
 const nodemailer = require('nodemailer');
 
+const sources = [
+    {name: 'Bitcoin', selector: 'a[href="/assets/btc/usd/chart"] > div > span'},
+    {name: 'Ethereum', selector: 'a[href="/assets/eth/usd/chart"] > div > span'},
+    {name: 'Litecoin', selector: 'a[href="/assets/ltc/usd/chart"] > div > span'},
+    {name: 'Bitcoin Cash', selector: 'a[href="/assets/bch/usd/chart"] > div > span'},
+];
 const options = {
     urls: ['https://cryptowat.ch/'],
     directory: process.env.SCRAPE_PATH,
-    sources: [{
-        selector: 'a[href="/assets/btc/usd/chart"] > div > span'
-    }]
+    sources: sources
 };
 
 async function send_email(price, pct) {
@@ -33,29 +37,69 @@ async function send_email(price, pct) {
     });
 }
 
+function should_email() {
+
+    if (process.argv[2] === 'email') return true;
+    return false;
+    // Check history
+
+}
+
+function save_records() {
+    for (let coin of sources) {
+        let csvWriter = createCsvWriter({
+            path: `data/${coin.name}.csv`,
+            header: [
+                {id: 'date', title: 'date'},
+                {id: 'price', title: 'price'},
+                {id: 'pct', title: 'pct'}
+            ],
+            append: true
+        });
+        let date = new Date(Date.now());
+        let record = {
+            date: date.toUTCString(),
+            price: coin.price,
+            pct: coin.pct
+        };
+        csvWriter.writeRecords([record]).then(res => {}).catch(err => {console.error(err)});
+    }
+}
+
 scrape(options).then(res => {
 
-    let price = res[0].children[0].filename;
-    let pct = res[0].children[1].filename
-    let csvWriter = createCsvWriter({
-        path: 'data/bitcoin.csv',
-        header: [
-            {id: 'date', title: 'date'},
-            {id: 'price', title: 'price'}
-        ],
-        append: true
-    });
+    for (let coin of sources) {
+        switch(coin.name) {
+            case 'Bitcoin':
+                coin.price = res[0].children[0].filename;
+                coin.pct = res[0].children[1].filename;
+                break;
+            case 'Ethereum':
+                coin.price = res[0].children[3].filename;
+                coin.pct = res[0].children[4].filename;
+                break;
+            case 'Litecoin':
+                coin.price = res[0].children[6].filename;
+                coin.pct = res[0].children[7].filename;
+                break;
+            case 'Bitcoin Cash':
+                coin.price = res[0].children[9].filename;
+                coin.pct = res[0].children[10].filename;
+                break;
+            default:
+                break;
+        }
+        console.log(`${coin.name} is at ${coin.price} | ${coin.pct}`);
+    }
 
-    let date = new Date(Date.now());
-    let record = {
-        date: date.toUTCString(),
-        price: price
-    };
-    csvWriter.writeRecords([record]).then(res => {}).catch(err => {});
+    save_records();
 
-    send_email(price, pct);
-    rimraf(process.env.SCRAPE_PATH, (err) => {});
+    if (should_email()) {
+        send_email(price, pct).then(res =>{}).catch(err => { console.error(err) });
+    }
+
+    rimraf(process.env.SCRAPE_PATH, (err) => {if (err) console.error});
 
 }).catch(err => {
-    console.log(err);
+    console.error(err);
 });
